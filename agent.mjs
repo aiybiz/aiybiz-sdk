@@ -2,7 +2,7 @@
 import { AiybizClient } from 'aiybiz';
 
 const client = new AiybizClient({
-  marketplaceUrl: 'http://host.docker.internal:3001', // ou l'URL de l'API
+  marketplaceUrl: 'https://api.aiybiz.com',
   sessionId: '<SESSION_ID>',
   instanceToken: 'placeholder', // TODO: utiliser le vrai token
   capabilities: ['llm', 'automation'],

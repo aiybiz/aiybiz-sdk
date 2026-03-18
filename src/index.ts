@@ -1,4 +1,5 @@
 export { AiybizClient } from './client';
+export { resolveConfig } from './config';
 export type {
   AiybizConfig,
   ActivateResponse,

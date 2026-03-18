@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { AiybizConfig, ActivateResponse, WsMessage } from './types';
 import { WsManager } from './ws';
 import { Heartbeat } from './heartbeat';
+import { resolveConfig } from './config';
 
 const DEFAULTS = {
   capabilities: [] as string[],
@@ -12,13 +13,15 @@ const DEFAULTS = {
 
 async function activateWithRetry(
   marketplaceUrl: string,
+  sessionId: string,
   instanceToken: string,
   capabilities: string[],
 ): Promise<ActivateResponse> {
-  const url = `${marketplaceUrl}/activate`;
+  const url = `${marketplaceUrl}/agent/sessions/${sessionId}/activate`;
   const body = JSON.stringify({ capabilities });
   const headers = {
-    Authorization: `Bearer ${instanceToken}`,
+    // TODO: re-add Authorization once token flow is stable
+    // Authorization: `Bearer ${instanceToken}`,
     'Content-Type': 'application/json',
   };
 
@@ -44,33 +47,40 @@ export class AiybizClient extends EventEmitter {
   private wsManager: WsManager | null = null;
   private heartbeat: Heartbeat | null = null;
 
-  constructor(config: AiybizConfig) {
+  /**
+   * @param config Partial config — any missing required field is read from
+   *   AIYBIZ_URL / AIYBIZ_SESSION_ID / AIYBIZ_TOKEN env vars or aiybiz.config.json.
+   */
+  constructor(config?: Partial<AiybizConfig>) {
     super();
-    this.config = { ...DEFAULTS, ...config };
+    this.config = { ...DEFAULTS, ...resolveConfig(config) };
   }
 
   async connect(): Promise<void> {
-    const { marketplaceUrl, instanceToken, capabilities } = this.config;
+    const { marketplaceUrl, instanceToken, capabilities, heartbeatInterval, reconnectBaseDelay, maxReconnectAttempts } = this.config;
+    const sessionId = this.config.sessionId;
 
-    const activation = await activateWithRetry(marketplaceUrl, instanceToken, capabilities);
-    this._instanceId = activation.instanceId;
+    await activateWithRetry(marketplaceUrl, sessionId, instanceToken, capabilities);
+    this._instanceId = sessionId;
+
+    // Derive WS URL from marketplaceUrl (http→ws, https→wss)
+    const wsUrl = marketplaceUrl.replace(/^http/, 'ws') + `/agent/ws?sessionId=${sessionId}`;
 
     this.wsManager = new WsManager({
-      wsUrl: activation.wsUrl,
-      instanceId: activation.instanceId,
+      wsUrl,
+      instanceId: sessionId,
       capabilities,
-      reconnectBaseDelay: this.config.reconnectBaseDelay,
-      maxReconnectAttempts: this.config.maxReconnectAttempts,
+      reconnectBaseDelay,
+      maxReconnectAttempts,
       emitter: this,
     });
 
-    this.heartbeat = new Heartbeat(this.wsManager, this.config.heartbeatInterval);
-
-    this.once('connect', () => {
-      this.heartbeat!.start();
-    });
-
     await this.wsManager.connect();
+    // Note: WsManager already emits 'connect' on this (shared emitter) when WS opens.
+    // No need to re-emit here.
+
+    this.heartbeat = new Heartbeat(this.wsManager, heartbeatInterval);
+    this.heartbeat.start();
   }
 
   send(msg: Omit<WsMessage, 'instanceId' | 'timestamp'>): void {
@@ -88,6 +98,7 @@ export class AiybizClient extends EventEmitter {
     this.heartbeat?.stop();
     this.wsManager?.destroy();
     this._instanceId = null;
+    this.emit('disconnect', 0, 'disconnected');
   }
 
   get isConnected(): boolean {
@@ -95,6 +106,10 @@ export class AiybizClient extends EventEmitter {
   }
 
   get id(): string | null {
+    return this._instanceId;
+  }
+
+  get instanceId(): string | null {
     return this._instanceId;
   }
 }

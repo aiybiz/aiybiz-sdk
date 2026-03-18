@@ -2,6 +2,9 @@ export interface AiybizConfig {
   /** Base URL of the marketplace, e.g. https://api.aiybiz.com */
   marketplaceUrl: string;
 
+  /** Session ID provided by the marketplace during provisioning */
+  sessionId: string;
+
   /** Instance token provided by the marketplace during provisioning */
   instanceToken: string;
 
@@ -19,9 +22,7 @@ export interface AiybizConfig {
 }
 
 export interface ActivateResponse {
-  wsUrl: string;
-  instanceId: string;
-  expiresAt?: string;
+  success: boolean;
 }
 
 export type MessageType = 'ready' | 'heartbeat' | 'message' | 'pulse' | 'error';

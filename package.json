@@ -4,6 +4,25 @@
   "description": "Lightweight SDK for connecting AI agents to the AIYBiz marketplace",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "aiybiz": "bin/aiybiz.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "bin",
+    "agent.mjs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch"
@@ -12,6 +31,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "@types/ws": "^8.5.13",
     "typescript": "^5.8.0"
   }

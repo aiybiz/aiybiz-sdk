@@ -2,6 +2,10 @@
   "name": "aiybiz",
   "version": "0.1.0",
   "description": "Lightweight SDK for connecting AI agents to the AIYBiz marketplace",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aiybiz-marketplace/aiybiz-sdk.git"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {

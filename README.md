@@ -12,6 +12,19 @@ npm install aiybiz
 
 Requires Node.js ≥ 18.
 
+### Install from GitHub
+
+Pre-built tarballs are attached to [GitHub Releases](https://github.com/aiybiz-marketplace/aiybiz-sdk/releases). To install a specific version without using the npm registry:
+
+1. Download the `aiybiz-<version>.tgz` asset from the [Releases](https://github.com/aiybiz-marketplace/aiybiz-sdk/releases) page for the version you need (e.g. `v0.1.0`).
+2. Install from the local file:
+
+   ```bash
+   npm install ./aiybiz-0.1.0.tgz
+   ```
+
+For reproducible installs, pin to a specific release (tag or version); avoid using `#main` or floating refs in production.
+
 ## Environment variables
 
 | Variable | Description |

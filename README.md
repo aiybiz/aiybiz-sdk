@@ -6,18 +6,41 @@ Runs on the **Builder's server** — manages the full lifecycle: activation, Web
 
 ## Install
 
-```bash
-npm install aiybiz
-```
-
 Requires Node.js ≥ 18.
 
-### Install from GitHub
+### From the GitHub release (recommended)
 
-Pre-built tarballs are attached to [GitHub Releases](https://github.com/aiybiz-marketplace/aiybiz-sdk/releases). To install a specific version:
+Each [GitHub Release](https://github.com/aiybiz/aiybiz-sdk/releases) attaches a pre-built `.tgz` tarball. Download and install it:
 
 ```bash
+# Download the latest tarball directly
+npm install https://github.com/aiybiz/aiybiz-sdk/releases/latest/download/aiybiz-0.1.0.tgz
+
+# Or download first, then install locally
+curl -LO https://github.com/aiybiz/aiybiz-sdk/releases/download/v0.1.0/aiybiz-0.1.0.tgz
 npm install ./aiybiz-0.1.0.tgz
+```
+
+Pin to a specific version tag to ensure reproducible installs:
+
+```bash
+# Replace v0.1.0 with the tag you want
+npm install https://github.com/aiybiz/aiybiz-sdk/releases/download/v0.1.0/aiybiz-0.1.0.tgz
+```
+
+### Use without installing (npx)
+
+```bash
+npx aiybiz deploy-openclaw   # runs the CLI directly from the installed package
+```
+
+### From source (development)
+
+```bash
+git clone https://github.com/aiybiz/aiybiz-sdk.git
+cd aiybiz-sdk
+npm install && npm run build
+npm install -g .   # optional: make aiybiz available globally
 ```
 
 ---

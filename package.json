@@ -23,7 +23,9 @@
     "bin",
     "examples",
     "agent.mjs",
-    "README.md"
+    "README.md",
+    "Dockerfile.openclaw-embedded",
+    "docker-entrypoint.sh"
   ],
   "engines": {
     "node": ">=18"

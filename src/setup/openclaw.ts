@@ -9,6 +9,8 @@
  */
 
 import { execSync, spawnSync } from 'child_process';
+import { mkdirSync, writeFileSync } from 'fs';
+import { dirname } from 'path';
 
 export interface OpenClawSetupOptions {
   /** Docker container name or ID */
@@ -30,30 +32,28 @@ export interface OpenClawSetupOptions {
     contextWindow?: number;
     maxTokens?: number;
   };
-  /** Timeout in ms to wait for the gateway to start (default: 30000) */
+  /**
+   * Timeout in ms to wait for the gateway to start after container restart.
+   * VPS cold-starts can take 60-120s depending on hardware.
+   * Default: 180000 (180s)
+   */
   startupTimeoutMs?: number;
 }
 
 const log = (msg: string) => console.log(`[aiybiz:setup:openclaw] ${new Date().toISOString()} ${msg}`);
 const logErr = (msg: string) => console.error(`[aiybiz:setup:openclaw] ${new Date().toISOString()} ERROR ${msg}`);
 
+type ProviderConfig = OpenClawSetupOptions['providerConfig'];
+
 /**
- * Write openclaw.json inside the container and restart it.
- * Returns the gateway URL (using host port mapping).
+ * Build the openclaw.json config object (shared between local and container setup).
  */
-export async function setupOpenClawContainer(opts: OpenClawSetupOptions): Promise<string> {
-  const {
-    container,
-    token,
-    providerEnv,
-    providerConfig: p,
-    startupTimeoutMs = 30000,
-  } = opts;
-
-  log(`setting up container: ${container}`);
-
-  // Build the config
-  const config = {
+export function buildOpenClawConfig(
+  token: string,
+  providerEnv: Record<string, string>,
+  p: ProviderConfig,
+): object {
+  return {
     commands: { native: 'auto', nativeSkills: 'auto', restart: true, ownerDisplay: 'raw' },
     gateway: {
       auth: { mode: 'token', token },
@@ -93,12 +93,46 @@ export async function setupOpenClawContainer(opts: OpenClawSetupOptions): Promis
       lastTouchedAt: new Date().toISOString(),
     },
   };
+}
 
+/**
+ * Write openclaw.json directly to a local path (used in embedded/in-container mode).
+ * Call this before starting the OpenClaw process so it picks up the config on first boot.
+ */
+export function writeOpenClawConfigLocal(opts: {
+  token: string;
+  providerEnv: Record<string, string>;
+  providerConfig: ProviderConfig;
+  configPath: string;
+}): void {
+  const config = buildOpenClawConfig(opts.token, opts.providerEnv, opts.providerConfig);
+  const json = JSON.stringify(config, null, 2);
+  mkdirSync(dirname(opts.configPath), { recursive: true });
+  writeFileSync(opts.configPath, json, { encoding: 'utf-8', mode: 0o600 });
+  log(`openclaw.json written to ${opts.configPath}`);
+}
+
+/**
+ * Write openclaw.json inside the container and restart it.
+ * Returns the gateway URL (using host port mapping).
+ */
+export async function setupOpenClawContainer(opts: OpenClawSetupOptions): Promise<string> {
+  const {
+    container,
+    token,
+    providerEnv,
+    providerConfig: p,
+    startupTimeoutMs = 180000,
+  } = opts;
+
+  log(`setting up container: ${container}`);
+
+  const config = buildOpenClawConfig(token, providerEnv, p);
   const json = JSON.stringify(config, null, 2);
 
   // Wait for OpenClaw to create its config directory (it does so on first startup)
   log(`waiting for OpenClaw config dir to appear in container ${container}`);
-  await waitForConfigDir(container, 30000);
+  await waitForConfigDir(container, 60000);
 
   log(`writing openclaw.json to container ${container}`);
   const writeResult = spawnSync('docker', [
@@ -151,10 +185,10 @@ export function getGatewayHostPort(container: string): number {
 }
 
 /**
- * Wait until OpenClaw creates its config directory inside the container.
+ * Wait until OpenClaw creates its config file inside the container.
  * This happens during the first few seconds of container startup.
  */
-async function waitForConfigDir(container: string, timeoutMs = 30000): Promise<void> {
+async function waitForConfigDir(container: string, timeoutMs = 60000): Promise<void> {
   const start = Date.now();
   const interval = 1000;
 
@@ -176,50 +210,71 @@ async function waitForConfigDir(container: string, timeoutMs = 30000): Promise<v
 }
 
 /**
- * Wait until the OpenClaw gateway responds to a ping via chat completions.
+ * Wait until the OpenClaw gateway is reachable.
+ *
+ * Strategy:
+ *  1. First wait for the port to be open (TCP-level check via a lightweight HEAD request)
+ *  2. Then confirm the chat completions endpoint responds 2xx
+ *
+ * VPS note: container restart + gateway init can take 40-60s on shared hardware.
+ * The default timeout is 90s to accommodate slow cold-starts.
  */
 export async function waitForGateway(
   gatewayUrl: string,
   token: string,
-  timeoutMs = 30000,
+  timeoutMs = 180000,
 ): Promise<void> {
   const start = Date.now();
-  const interval = 2000;
+  const interval = 3000;
 
   log(`waiting for gateway at ${gatewayUrl} (timeout: ${timeoutMs}ms)`);
 
   while (Date.now() - start < timeoutMs) {
+    const elapsed = Date.now() - start;
+
     try {
-      const res = await fetch(`${gatewayUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          model: 'openclaw:main',
-          messages: [{ role: 'user', content: 'ping' }],
-          max_tokens: 10,
-        }),
-        signal: AbortSignal.timeout(5000),
-      });
+      // Step 1: lightweight connectivity check — just hit the root path
+      const probe = await fetch(gatewayUrl, {
+        signal: AbortSignal.timeout(4000),
+      }).catch(() => null);
 
-      if (res.ok) {
-        const elapsed = Date.now() - start;
-        log(`gateway ready after ${elapsed}ms`);
-        return;
+      if (probe !== null) {
+        // Port is open — now confirm the chat completions endpoint is up
+        const res = await fetch(`${gatewayUrl}/v1/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            model: 'openclaw:main',
+            messages: [{ role: 'user', content: 'ping' }],
+            max_tokens: 10,
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+
+        if (res.ok) {
+          log(`gateway ready after ${Date.now() - start}ms`);
+          return;
+        }
+
+        const body = await res.text().catch(() => '');
+        log(`gateway reachable but not ready yet (HTTP ${res.status}: ${body.slice(0, 120)}), retrying in ${interval}ms... [${elapsed}ms elapsed]`);
+      } else {
+        log(`gateway port not open yet, retrying in ${interval}ms... [${elapsed}ms elapsed]`);
       }
-
-      const status = res.status;
-      log(`gateway not ready yet (HTTP ${status}), retrying in ${interval}ms...`);
-    } catch {
-      log(`gateway not reachable yet, retrying in ${interval}ms...`);
+    } catch (err) {
+      log(`gateway not reachable yet (${(err as Error).message}), retrying in ${interval}ms... [${elapsed}ms elapsed]`);
     }
 
     await new Promise((r) => setTimeout(r, interval));
   }
 
-  throw new Error(`OpenClaw gateway at ${gatewayUrl} did not become ready within ${timeoutMs}ms`);
+  throw new Error(
+    `OpenClaw gateway at ${gatewayUrl} did not become ready within ${timeoutMs}ms. ` +
+    'Check container logs: docker logs <container-name> --tail 20',
+  );
 }
 
 /**
@@ -230,18 +285,18 @@ export function launchOpenClawContainer(opts: {
   image?: string;
   name: string;
   hostPort?: number;
+  restart?: string;
 }): string {
   const image = opts.image ?? 'ghcr.io/openclaw/openclaw:main-slim';
   const hostPort = opts.hostPort ?? 18789;
 
   log(`launching container ${opts.name} from ${image} on port ${hostPort}`);
 
-  const result = spawnSync('docker', [
-    'run', '-d',
-    '--name', opts.name,
-    '-p', `${hostPort}:18789`,
-    image,
-  ], { encoding: 'utf-8' });
+  const args = ['run', '-d', '--name', opts.name, '-p', `${hostPort}:18789`];
+  if (opts.restart) args.push('--restart', opts.restart);
+  args.push(image);
+
+  const result = spawnSync('docker', args, { encoding: 'utf-8' });
 
   if (result.status !== 0) {
     logErr(`docker run failed: ${result.stderr}`);

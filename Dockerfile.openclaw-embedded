@@ -1,0 +1,52 @@
+# AIYBiz Embedded Agent Image
+#
+# Extends the official OpenClaw image with:
+#   - aiybiz SDK (bridge + push server)
+#   - ca-certificates (for HTTPS support in Lightpanda and bridge)
+#   - Lightpanda headless browser
+#
+# Build:
+#   docker build -f Dockerfile.openclaw-embedded \
+#     --build-arg AIYBIZ_TGZ=aiybiz.tgz \
+#     -t aiybiz-openclaw:latest .
+#
+# Run:
+#   docker run -d --name my-agent --restart=always \
+#     -p 18789:18789 \
+#     -e AIYBIZ_URL=https://api.aiybiz.com \
+#     -e AIYBIZ_SESSION_ID=<session-id> \
+#     -e OPENCLAW_TOKEN=<token> \
+#     -e OPENCLAW_PROVIDER_NAME=moonshot \
+#     -e OPENCLAW_PROVIDER_URL=https://api.moonshot.ai/v1 \
+#     -e OPENCLAW_PROVIDER_KEY=sk-... \
+#     -e OPENCLAW_MODEL=moonshot/kimi-k2.5 \
+#     -e OPENCLAW_MODEL_ID=kimi-k2.5 \
+#     -e OPENCLAW_MODEL_NAME="Kimi K2.5" \
+#     aiybiz-openclaw:latest
+
+FROM ghcr.io/openclaw/openclaw:main-slim
+
+USER root
+
+# System dependencies: ca-certificates for HTTPS
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Lightpanda headless browser
+RUN curl -L -o /usr/local/bin/lightpanda \
+    https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux && \
+    chmod +x /usr/local/bin/lightpanda
+
+# Install aiybiz SDK
+ARG AIYBIZ_TGZ=aiybiz.tgz
+COPY ${AIYBIZ_TGZ} /tmp/aiybiz.tgz
+RUN npm install -g /tmp/aiybiz.tgz && rm /tmp/aiybiz.tgz
+
+# Entrypoint: starts OpenClaw + aiybiz bridge + push server
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+EXPOSE 18789
+
+ENTRYPOINT ["/docker-entrypoint.sh"]

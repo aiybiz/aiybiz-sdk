@@ -33,6 +33,11 @@ export interface OpenClawBridgeOptions {
   systemPrompt?: string;
   /** Max tokens per reply (default: 2048) */
   maxTokens?: number;
+  /**
+   * Interval in ms to check OpenClaw health and pulse status to the marketplace.
+   * Set to 0 to disable. Default: 120000 (2 min).
+   */
+  healthCheckIntervalMs?: number;
 }
 
 /**
@@ -109,6 +114,30 @@ export async function startOpenClawBridge(opts: OpenClawBridgeOptions): Promise<
   await client.connect();
   log('bridge is active — waiting for client messages');
 
+  // Periodic health check: ping OpenClaw and pulse the real status
+  const healthIntervalMs = opts.healthCheckIntervalMs ?? 120000;
+  if (healthIntervalMs > 0) {
+    const checkHealth = async () => {
+      if (!client.isConnected) return;
+      try {
+        const res = await fetch(opts.openclawUrl, { signal: AbortSignal.timeout(5000) });
+        if (res.ok || res.status < 500) {
+          client.pulse('✅ Agent is up and ready.', { status: 'ok', openclawUrl: opts.openclawUrl });
+        } else {
+          client.pulse(`⚠️ Agent degraded (HTTP ${res.status}).`, { status: 'degraded' });
+        }
+      } catch (err) {
+        client.pulse('❌ Agent unreachable — OpenClaw container may be down.', { status: 'error', error: (err as Error).message });
+      }
+    };
+
+    const healthTimer = setInterval(checkHealth, healthIntervalMs);
+    // Prevent the timer from keeping the process alive if the bridge is stopped
+    if (healthTimer.unref) healthTimer.unref();
+
+    client.on('disconnect', () => clearInterval(healthTimer));
+  }
+
   return client;
 }
 
@@ -146,5 +175,6 @@ export async function startOpenClawBridgeFromEnv(): Promise<AiybizClient> {
     openclawAgentId: process.env.OPENCLAW_AGENT_ID ?? 'main',
     systemPrompt: process.env.OPENCLAW_SYSTEM,
     maxTokens: process.env.OPENCLAW_MAX_TOKENS ? parseInt(process.env.OPENCLAW_MAX_TOKENS, 10) : 2048,
+    healthCheckIntervalMs: process.env.OPENCLAW_HEALTH_INTERVAL_MS ? parseInt(process.env.OPENCLAW_HEALTH_INTERVAL_MS, 10) : 120000,
   });
 }

@@ -14,5 +14,6 @@ export { OpenClawAdapter } from './adapters/openclaw';
 export type { OpenClawAdapterOptions } from './adapters/openclaw';
 export { startOpenClawBridge, startOpenClawBridgeFromEnv } from './bridge/openclaw-bridge';
 export type { OpenClawBridgeOptions } from './bridge/openclaw-bridge';
-export { setupOpenClawContainer, launchOpenClawContainer, waitForGateway, getGatewayHostPort } from './setup/openclaw';
+export { setupOpenClawContainer, launchOpenClawContainer, waitForGateway, getGatewayHostPort, writeOpenClawConfigLocal, buildOpenClawConfig } from './setup/openclaw';
 export type { OpenClawSetupOptions } from './setup/openclaw';
+export { startPushServer } from './bridge/push-server';

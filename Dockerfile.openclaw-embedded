@@ -28,16 +28,6 @@ FROM ghcr.io/openclaw/openclaw:main-slim
 
 USER root
 
-# System dependencies: ca-certificates for HTTPS
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates curl && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install Lightpanda headless browser
-RUN curl -L -o /usr/local/bin/lightpanda \
-    https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux && \
-    chmod +x /usr/local/bin/lightpanda
-
 # Install aiybiz SDK
 ARG AIYBIZ_TGZ=aiybiz.tgz
 COPY ${AIYBIZ_TGZ} /tmp/aiybiz.tgz

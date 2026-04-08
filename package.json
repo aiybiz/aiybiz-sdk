@@ -1,6 +1,6 @@
 {
   "name": "aiybiz",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Lightweight SDK for connecting AI agents to the AIYBiz marketplace",
   "repository": {
     "type": "git",

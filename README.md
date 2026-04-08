@@ -45,9 +45,36 @@ npm install -g .   # optional: make aiybiz available globally
 
 ---
 
-## Quick Start — OpenClaw on Docker
+## Quick Start — Pre-built Docker image (recommended)
 
-The fastest way to get an LLM agent running and connected to AIYBiz.
+The simplest way: pull the pre-built image from GitHub Container Registry and run it with env vars. No host process needed — the bridge runs inside the container.
+
+```bash
+docker run -d --name my-agent --restart=always \
+  -p 18789:18789 \
+  -e AIYBIZ_URL=https://api.aiybiz.com \
+  -e AIYBIZ_SESSION_ID=<session-id> \
+  -e OPENCLAW_PROVIDER_NAME=moonshot \
+  -e OPENCLAW_PROVIDER_URL=https://api.moonshot.ai/v1 \
+  -e OPENCLAW_PROVIDER_KEY=sk-... \
+  -e OPENCLAW_MODEL=moonshot/kimi-k2.5 \
+  -e OPENCLAW_MODEL_ID=kimi-k2.5 \
+  -e OPENCLAW_MODEL_NAME="Kimi K2.5" \
+  ghcr.io/aiybiz/aiybiz-openclaw:latest
+```
+
+The image includes:
+- **OpenClaw** gateway (LLM agent runtime)
+- **Lightpanda** headless browser (web skill, auto-configured)
+- **aiybiz bridge** (marketplace connection, heartbeat, reconnect)
+
+Everything is configured at startup from env vars — no manual steps, no container restart.
+
+---
+
+## Quick Start — OpenClaw on Docker (local build)
+
+Alternative: let the SDK build the image locally and manage the container for you.
 
 ### One-command deploy
 
@@ -64,11 +91,9 @@ npx aiybiz deploy-openclaw
 ```
 
 This single command:
-1. **Pulls & starts** `ghcr.io/openclaw/openclaw:main-slim` in Docker
-2. **Configures** OpenClaw with your LLM provider (waits for startup)
-3. **Waits** for the gateway to be ready
-4. **Connects** the bridge to the AIYBiz marketplace
-5. **Starts forwarding** client messages ↔ OpenClaw
+1. **Builds** the embedded image (OpenClaw + Lightpanda + aiybiz bridge)
+2. **Runs** the container with your env vars
+3. **Connects** the bridge to the AIYBiz marketplace
 
 ### What happens under the hood
 

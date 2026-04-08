@@ -55,6 +55,9 @@ export function buildOpenClawConfig(
 ): object {
   return {
     commands: { native: 'auto', nativeSkills: 'auto', restart: true, ownerDisplay: 'raw' },
+    skills: {
+      browser: { engine: 'lightpanda' },
+    },
     gateway: {
       auth: { mode: 'token', token },
       bind: 'lan',

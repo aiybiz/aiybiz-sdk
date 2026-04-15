@@ -3,6 +3,9 @@ export { resolveConfig } from './config';
 export type {
   AiybizConfig,
   ActivateResponse,
+  AgentCronJobBody,
+  AgentCronJobRow,
+  AgentCronLastRunState,
   WsMessage,
   Attachment,
   MessageType,

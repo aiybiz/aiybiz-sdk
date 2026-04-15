@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { AiybizConfig, ActivateResponse, WsMessage } from './types';
+import { AiybizConfig, ActivateResponse, AgentCronJobBody, AgentCronJobRow, WsMessage } from './types';
 import { WsManager } from './ws';
 import { Heartbeat } from './heartbeat';
 import { resolveConfig } from './config';
@@ -19,11 +19,7 @@ async function activateWithRetry(
 ): Promise<ActivateResponse> {
   const url = `${marketplaceUrl}/agent/sessions/${sessionId}/activate`;
   const body = JSON.stringify({ capabilities });
-  const headers = {
-    // TODO: re-add Authorization once token flow is stable
-    // Authorization: `Bearer ${instanceToken}`,
-    'Content-Type': 'application/json',
-  };
+  const headers = agentRequestHeaders(instanceToken);
 
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -39,6 +35,14 @@ async function activateWithRetry(
     lastError = new Error(`Activate failed with status ${res.status}`);
   }
   throw lastError ?? new Error('Activate failed');
+}
+
+function agentRequestHeaders(instanceToken: string): Record<string, string> {
+  return {
+    // TODO: re-add Authorization once token flow is stable
+    // Authorization: `Bearer ${instanceToken}`,
+    'Content-Type': 'application/json',
+  };
 }
 
 export class AiybizClient extends EventEmitter {
@@ -92,6 +96,34 @@ export class AiybizClient extends EventEmitter {
 
   pulse(content: string, meta?: Record<string, unknown>): void {
     this.send({ type: 'pulse', content, meta });
+  }
+
+  /**
+   * Full replace of cron jobs for this session on the marketplace (agent auth, no user JWT).
+   * Same shape as `PUT /agent/sessions/:sessionId/cron-jobs` — at most 100 jobs; duplicate `id` in one payload is rejected by the API.
+   */
+  async replaceAgentCronJobs(jobs: AgentCronJobBody[]): Promise<{ jobs: AgentCronJobRow[] }> {
+    const { marketplaceUrl, sessionId, instanceToken } = this.config;
+    if (jobs.length > 100) {
+      throw new Error('replaceAgentCronJobs: at most 100 jobs per request');
+    }
+    const url = `${marketplaceUrl}/agent/sessions/${sessionId}/cron-jobs`;
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: agentRequestHeaders(instanceToken),
+      body: JSON.stringify({ jobs }),
+    });
+    if (res.status === 401) throw new Error('Invalid instance token');
+    if (res.status === 404) throw new Error('Session not found');
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const errBody = (await res.json()) as { error?: string; message?: string };
+        detail = errBody.error ?? errBody.message ?? detail;
+      } catch { /* ignore */ }
+      throw new Error(`replaceAgentCronJobs failed (${res.status}): ${detail}`);
+    }
+    return res.json() as Promise<{ jobs: AgentCronJobRow[] }>;
   }
 
   disconnect(): void {

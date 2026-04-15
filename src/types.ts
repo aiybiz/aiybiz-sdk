@@ -52,3 +52,26 @@ export interface AiybizEventMap {
   error: (err: Error) => void;
   reconnecting: (attempt: number, delay: number) => void;
 }
+
+/** Values accepted by `PUT /agent/sessions/:sessionId/cron-jobs` for `lastRunState`. */
+export type AgentCronLastRunState = 'running' | 'success' | 'failed' | null;
+
+/**
+ * One cron job row for agent → marketplace sync (`PUT .../cron-jobs` request body).
+ * Call periodically with stable `id`s; empty array clears all jobs server-side.
+ */
+export interface AgentCronJobBody {
+  id: string;
+  title: string;
+  description: string;
+  prompt: string;
+  schedule: string;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastRunState: AgentCronLastRunState;
+}
+
+/** Job as returned after a successful cron-jobs replace (includes empty `executions`). */
+export interface AgentCronJobRow extends AgentCronJobBody {
+  executions: unknown[];
+}

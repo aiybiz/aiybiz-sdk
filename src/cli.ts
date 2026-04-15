@@ -105,6 +105,7 @@ Optional:
   OPENCLAW_URL             Gateway URL (default: http://localhost:18789)
   AIYBIZ_PUSH_PORT         Internal push server port (default: 3099)
   OPENCLAW_HEALTH_INTERVAL_MS  Health check interval ms (default: 120000)
+  AIYBIZ_CRON_SYNC_INTERVAL_MS  Sync local crons to marketplace ms (default: 60000, 0=off)
 
 The push server allows async pushes from within the container:
   curl -X POST http://localhost:3099/push \\
@@ -275,7 +276,8 @@ async function main() {
     const openclawUrl        = process.env.OPENCLAW_URL ?? 'http://localhost:18789';
     const pushPort           = parseInt(process.env.AIYBIZ_PUSH_PORT ?? '3099', 10);
     const startupTimeoutMs   = parseInt(process.env.OPENCLAW_STARTUP_TIMEOUT_MS ?? '120000', 10);
-    const healthIntervalMs   = parseInt(process.env.OPENCLAW_HEALTH_INTERVAL_MS ?? '120000', 10);
+    const healthIntervalMs = parseInt(process.env.OPENCLAW_HEALTH_INTERVAL_MS ?? '120000', 10);
+    const cronSyncIntervalMs = parseInt(process.env.AIYBIZ_CRON_SYNC_INTERVAL_MS ?? '60000', 10);
 
     log(`command=start-embedded session=${sessionId.slice(0, 8)}`);
     log(`waiting for OpenClaw at ${openclawUrl}...`);
@@ -308,6 +310,7 @@ async function main() {
         openclawUrl,
         openclawToken: token,
         healthCheckIntervalMs: healthIntervalMs,
+        cronSyncIntervalMs,
       });
     } catch (err) {
       logErr(`bridge failed: ${(err as Error).message}`);

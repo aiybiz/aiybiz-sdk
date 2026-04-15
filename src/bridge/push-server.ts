@@ -18,12 +18,33 @@
  *   });
  *
  * Endpoints:
- *   POST /push    { content: string, meta?: object } → pulse via WebSocket
- *   GET  /health  → { ok: true, connected: boolean }
+ *   POST /push       { content: string, meta?: object }  → pulse via WebSocket
+ *   GET  /health                                         → connection status
+ *   GET  /crons                                          → list OpenClaw cron jobs
+ *   GET  /crons/:id/runs                                 → run history for a job
  */
 
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import type { AiybizClient } from '../client.js';
+import type { CronJob } from './openclaw-cron-state';
+import { readCronJobs, readCronRuns } from './openclaw-cron-state';
+
+function formatCronJob(job: CronJob) {
+  return {
+    id: job.id,
+    name: job.name ?? null,
+    description: job.description ?? null,
+    enabled: job.enabled,
+    schedule: job.schedule,
+    payload: job.payload ?? null,
+    nextRunAt: job.state?.nextRunAtMs ? new Date(job.state.nextRunAtMs).toISOString() : null,
+    lastRunAt: job.state?.lastRunAtMs ? new Date(job.state.lastRunAtMs).toISOString() : null,
+    lastRunSuccess: job.state?.lastRunSuccess ?? null,
+    runCount: job.state?.runCount ?? 0,
+    createdAt: new Date(job.createdAtMs).toISOString(),
+    updatedAt: new Date(job.updatedAtMs).toISOString(),
+  };
+}
 
 const log = (msg: string) => console.log(`[aiybiz:push] ${new Date().toISOString()} ${msg}`);
 
@@ -34,6 +55,31 @@ export function startPushServer(client: AiybizClient, port = 3099, host = '127.0
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200);
       res.end(JSON.stringify({ ok: true, connected: client.isConnected }));
+      return;
+    }
+
+    // GET /crons — list all OpenClaw cron jobs
+    if (req.method === 'GET' && req.url === '/crons') {
+      const jobs = readCronJobs();
+      res.writeHead(200);
+      res.end(JSON.stringify({ ok: true, jobs: jobs.map(formatCronJob) }));
+      return;
+    }
+
+    // GET /crons/:id/runs — run history for a specific job
+    const runsMatch = req.url?.match(/^\/crons\/([^/]+)\/runs$/);
+    if (req.method === 'GET' && runsMatch) {
+      const jobId = runsMatch[1];
+      const jobs = readCronJobs();
+      const job = jobs.find((j) => j.id === jobId);
+      if (!job) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: `Job ${jobId} not found` }));
+        return;
+      }
+      const runs = readCronRuns(jobId);
+      res.writeHead(200);
+      res.end(JSON.stringify({ ok: true, jobId, runs }));
       return;
     }
 
@@ -64,7 +110,9 @@ export function startPushServer(client: AiybizClient, port = 3099, host = '127.0
 
   server.listen(port, host, () => {
     log(`listening on http://${host}:${port}`);
-    log('  POST /push   { content, meta? }  → push message via WebSocket');
-    log('  GET  /health                     → connection status');
+    log('  POST /push        { content, meta? }  → push message via WebSocket');
+    log('  GET  /health                          → connection status');
+    log('  GET  /crons                           → list OpenClaw cron jobs');
+    log('  GET  /crons/:id/runs                  → run history for a job');
   });
 }

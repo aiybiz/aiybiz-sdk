@@ -12,11 +12,13 @@
  *   OPENCLAW_TOKEN      OpenClaw gateway auth token
  *   OPENCLAW_AGENT_ID   OpenClaw agent ID (default: main)
  *   OPENCLAW_SYSTEM     System prompt (optional)
+ *   AIYBIZ_CRON_SYNC_INTERVAL_MS  Push OpenClaw cron jobs to the marketplace (ms, default 60000; 0 disables)
  */
 
 import { AiybizClient } from '../client.js';
 import { OpenClawAdapter } from '../adapters/openclaw.js';
 import type { WsMessage } from '../types.js';
+import { buildAgentCronJobsPayload, readCronJobs } from './openclaw-cron-state';
 
 const log = (msg: string) => console.log(`[aiybiz:bridge] ${new Date().toISOString()} ${msg}`);
 const logErr = (msg: string) => console.error(`[aiybiz:bridge] ${new Date().toISOString()} ERROR ${msg}`);
@@ -38,6 +40,12 @@ export interface OpenClawBridgeOptions {
    * Set to 0 to disable. Default: 120000 (2 min).
    */
   healthCheckIntervalMs?: number;
+  /**
+   * Interval in ms to push local OpenClaw cron jobs to the marketplace
+   * (`PUT /agent/sessions/:sessionId/cron-jobs`, full replace). Set to 0 to disable.
+   * Default: 60000 (1 min).
+   */
+  cronSyncIntervalMs?: number;
 }
 
 /**
@@ -138,6 +146,30 @@ export async function startOpenClawBridge(opts: OpenClawBridgeOptions): Promise<
     client.on('disconnect', () => clearInterval(healthTimer));
   }
 
+  const cronSyncIntervalMs = opts.cronSyncIntervalMs ?? 60000;
+  if (cronSyncIntervalMs > 0) {
+    const syncCronsToMarketplace = async () => {
+      if (!client.isConnected) return;
+      try {
+        const openJobs = readCronJobs();
+        const uniqueIds = new Set(openJobs.map((j) => j.id).filter(Boolean));
+        if (uniqueIds.size > 100) {
+          log(`cron sync: ${uniqueIds.size} unique job id(s) locally; API max is 100 — sending first 100`);
+        }
+        const jobs = buildAgentCronJobsPayload(openJobs);
+        await client.replaceAgentCronJobs(jobs);
+        log(`cron sync: marketplace replace ok (${jobs.length} job(s))`);
+      } catch (err) {
+        logErr(`cron sync: ${(err as Error).message}`);
+      }
+    };
+
+    void syncCronsToMarketplace();
+    const cronTimer = setInterval(syncCronsToMarketplace, cronSyncIntervalMs);
+    if (cronTimer.unref) cronTimer.unref();
+    client.on('disconnect', () => clearInterval(cronTimer));
+  }
+
   return client;
 }
 
@@ -162,7 +194,7 @@ export async function startOpenClawBridgeFromEnv(): Promise<AiybizClient> {
       `Missing required environment variables: ${missing.join(', ')}\n` +
       'Set them before starting the bridge.\n' +
       'Required: AIYBIZ_URL, AIYBIZ_SESSION_ID, OPENCLAW_URL, OPENCLAW_TOKEN\n' +
-      'Optional: AIYBIZ_TOKEN, OPENCLAW_AGENT_ID, OPENCLAW_SYSTEM, OPENCLAW_MAX_TOKENS',
+      'Optional: AIYBIZ_TOKEN, OPENCLAW_AGENT_ID, OPENCLAW_SYSTEM, OPENCLAW_MAX_TOKENS, AIYBIZ_CRON_SYNC_INTERVAL_MS',
     );
   }
 
@@ -176,5 +208,8 @@ export async function startOpenClawBridgeFromEnv(): Promise<AiybizClient> {
     systemPrompt: process.env.OPENCLAW_SYSTEM,
     maxTokens: process.env.OPENCLAW_MAX_TOKENS ? parseInt(process.env.OPENCLAW_MAX_TOKENS, 10) : 2048,
     healthCheckIntervalMs: process.env.OPENCLAW_HEALTH_INTERVAL_MS ? parseInt(process.env.OPENCLAW_HEALTH_INTERVAL_MS, 10) : 120000,
+    cronSyncIntervalMs: process.env.AIYBIZ_CRON_SYNC_INTERVAL_MS
+      ? parseInt(process.env.AIYBIZ_CRON_SYNC_INTERVAL_MS, 10)
+      : 60000,
   });
 }
